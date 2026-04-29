@@ -1,8 +1,8 @@
 import csv
 from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
-from sqlmodel import Session, select
-from database import get_session
+from sqlmodel import Session, select, SQLModel
+from database import get_session, engine
 from schemas import StoreSearchRequest, StoreSearchResponse, LoginRequest, TokenResponse, RefreshRequest, LogoutRequest, StoreCreate, StoreUpdate, UserCreate, UserUpdate
 from search_logic import search_nearby_stores
 from geocoding import geocode_address
@@ -19,13 +19,30 @@ from auth import (
     hash_password
 )
 from csv_validation import validate_csv_headers, validate_store_row
+from contextlib import asynccontextmanager
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    # startup
+
+    print("🚀 Creating tables...")
+
+    SQLModel.metadata.create_all(engine)
+
+    yield
+
+    # shutdown（可选）
+
+    print("🛑 App shutting down...")
+    
 app = FastAPI(
     title="Store Locator API",
     description="Production-ready Store Locator API built with FastAPI",
     version="1.0.0",
+    lifespan=lifespan
 )
-
 
 @app.get("/api/health")
 def health_check():
