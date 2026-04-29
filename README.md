@@ -101,5 +101,5 @@ It supports public store search functionality and secure internal store manageme
 ### 1. Clone project
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/KayL315/store_locator_api.git
 cd store_locator_project
