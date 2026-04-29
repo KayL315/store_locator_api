@@ -20,23 +20,18 @@ from auth import (
 )
 from csv_validation import validate_csv_headers, validate_store_row
 from contextlib import asynccontextmanager
-
+from seed_users import seed_users
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
-    # startup
-
     print("🚀 Creating tables...")
-
     SQLModel.metadata.create_all(engine)
+
+    print("🌱 Seeding users...")
+    seed_users()
 
     yield
 
-    # shutdown（可选）
-
-    print("🛑 App shutting down...")
-    
 app = FastAPI(
     title="Store Locator API",
     description="Production-ready Store Locator API built with FastAPI",

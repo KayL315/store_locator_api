@@ -35,7 +35,6 @@ def create_user_if_not_exists(
 
 
 def seed_users():
-    SQLModel.metadata.create_all(engine)
 
     with Session(engine) as db:
         create_user_if_not_exists(
