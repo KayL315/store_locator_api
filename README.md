@@ -17,6 +17,9 @@ It supports public store search functionality and secure internal store manageme
 - Deployment: (fill later: Render / Railway)
 
 ---
+## 🌐 Live Demo
+
+https://store-locator-api-wv3e.onrender.com/docs
 
 ## ⚙️ Features
 
