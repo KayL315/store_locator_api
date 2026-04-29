@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
-
+import os
+from dotenv import load_dotenv
 import jwt
 import bcrypt
 from fastapi import HTTPException, Depends
@@ -10,8 +11,13 @@ from sqlmodel import Session, select
 from database import get_session
 from models import User
 
+load_dotenv()
+JWT_SECRET = os.getenv("JWT_SECRET")
 
-JWT_SECRET = "dev-secret-change-later"
+if not JWT_SECRET:
+
+    raise RuntimeError("JWT_SECRET environment variable is required")
+
 JWT_ALGORITHM = "HS256"
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
