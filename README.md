@@ -21,6 +21,22 @@ It supports public store search functionality and secure internal store manageme
 
 https://store-locator-api-wv3e.onrender.com/docs
 
+## Deployment
+
+Live Demo:
+https://store-locator-api-wv3e.onrender.com/docs
+
+The application is deployed on Render with PostgreSQL.
+
+## Docker
+
+```bash
+docker build -t store-locator .
+docker run -p 10000:10000 \
+  -e DATABASE_URL="postgresql://postgres:password@host.docker.internal:5432/store_locator" \
+  -e JWT_SECRET="your-secret" \
+  store-locator
+  
 ## ⚙️ Features
 
 ### 1. Public Store Search API
