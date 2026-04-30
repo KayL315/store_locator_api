@@ -1,9 +1,10 @@
-from datetime import datetime, timedelta
-from typing import Optional
 import os
-from dotenv import load_dotenv
+import hashlib
+from datetime import datetime, timedelta
+
 import jwt
 import bcrypt
+from dotenv import load_dotenv
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel import Session, select
@@ -11,11 +12,12 @@ from sqlmodel import Session, select
 from database import get_session
 from models import User
 
+
 load_dotenv()
+
 JWT_SECRET = os.getenv("JWT_SECRET")
 
 if not JWT_SECRET:
-
     raise RuntimeError("JWT_SECRET environment variable is required")
 
 JWT_ALGORITHM = "HS256"
@@ -40,13 +42,29 @@ def verify_password(password: str, hashed_password: str) -> bool:
     )
 
 
+def hash_token(token: str) -> str:
+    """
+    Store only hash of refresh token in database.
+    This is safer than storing raw refresh tokens.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def get_user_role_name(user: User) -> str:
+    if not user.role:
+        raise HTTPException(status_code=403, detail="User has no role assigned")
+
+    return user.role.name
+
+
 def create_access_token(user: User) -> str:
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    role_name = get_user_role_name(user)
 
     payload = {
         "user_id": user.user_id,
         "email": user.email,
-        "role": user.role,
+        "role": role_name,
         "exp": expire,
     }
 
@@ -55,11 +73,12 @@ def create_access_token(user: User) -> str:
 
 def create_refresh_token(user: User) -> str:
     expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    role_name = get_user_role_name(user)
 
     payload = {
         "user_id": user.user_id,
         "email": user.email,
-        "role": user.role,
+        "role": role_name,
         "type": "refresh",
         "exp": expire,
     }
@@ -88,7 +107,9 @@ def get_current_user(
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload")
 
-    user = db.exec(select(User).where(User.user_id == user_id)).first()
+    user = db.exec(
+        select(User).where(User.user_id == user_id)
+    ).first()
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
@@ -96,13 +117,23 @@ def get_current_user(
     if user.status != "active":
         raise HTTPException(status_code=403, detail="User is inactive")
 
+    if not user.role:
+        raise HTTPException(status_code=403, detail="User has no role assigned")
+
     return user
 
 
-def require_roles(allowed_roles: list[str]):
+def require_permissions(required_permissions: list[str]):
     def dependency(current_user: User = Depends(get_current_user)):
-        if current_user.role not in allowed_roles:
-            raise HTTPException(status_code=403, detail="Permission denied")
+        if not current_user.role:
+            raise HTTPException(status_code=403, detail="User has no role assigned")
+
+        user_permissions = {permission.name for permission in current_user.role.permissions}
+
+        for permission in required_permissions:
+            if permission not in user_permissions:
+                raise HTTPException(status_code=403, detail="Permission denied")
+
         return current_user
 
     return dependency

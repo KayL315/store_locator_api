@@ -5,17 +5,13 @@ from pydantic import BaseModel, Field, model_validator, EmailStr
 class StoreSearchRequest(BaseModel):
     lat: Optional[float] = Field(default=None, ge=-90, le=90)
     lon: Optional[float] = Field(default=None, ge=-180, le=180)
-
-    # 后面做 geocoding 时会用，现在先保留字段
     address: Optional[str] = None
     postal_code: Optional[str] = None
 
     radius_miles: float = Field(default=10.0, gt=0, le=100)
 
-    # services = AND logic
     services: Optional[List[str]] = None
 
-    # store_types = OR logic
     store_types: Optional[List[str]] = None
 
     open_now: bool = False
@@ -103,7 +99,6 @@ class UserResponse(BaseModel):
     role: str
 
     status: str
-
 
 
 class StoreCreate(BaseModel):

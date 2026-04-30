@@ -8,15 +8,17 @@ from search_logic import search_nearby_stores
 from geocoding import geocode_address
 from rate_limit import rate_limit_dependency
 from datetime import datetime, timedelta
-from models import User, RefreshToken, Store
+from models import User, RefreshToken, Store, Role, Service
 from auth import (
     verify_password,
     create_access_token,
     create_refresh_token,
     decode_token,
     REFRESH_TOKEN_EXPIRE_DAYS,
-    require_roles,
-    hash_password
+    require_permissions,
+    hash_password,
+    hash_token,
+    get_user_role_name,
 )
 from csv_validation import validate_csv_headers, validate_store_row
 from contextlib import asynccontextmanager
@@ -39,6 +41,25 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+def get_or_create_services(db: Session, service_names: list[str]) -> list[Service]:
+    services = []
+
+    for service_name in service_names:
+        service = db.exec(
+            select(Service).where(Service.name == service_name)
+        ).first()
+
+        if not service:
+            service = Service(name=service_name)
+            db.add(service)
+            db.commit()
+            db.refresh(service)
+
+        services.append(service)
+
+    return services
+
 @app.get("/api/health")
 def health_check():
     return {
@@ -53,12 +74,7 @@ def search_stores(
     db: Session = Depends(get_session),
     _: None = Depends(rate_limit_dependency),
 ):
-    """
-    Public store search endpoint.
-
-    Current version supports lat/lon search.
-    Address and postal_code fields are reserved for the next geocoding step.
-    """
+    
     lat = request.lat
     lon = request.lon
     if lat is None or lon is None:
@@ -122,6 +138,9 @@ def login(
     if user.status != "active":
         raise HTTPException(status_code=403, detail="User is inactive")
 
+    if not user.role:
+        raise HTTPException(status_code=403, detail="User has no role assigned")
+
     if not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
@@ -130,7 +149,7 @@ def login(
 
     refresh_token_record = RefreshToken(
         user_id=user.user_id,
-        token=refresh_token,
+        token_hash=hash_token(refresh_token),
         expires_at=datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
     )
 
@@ -149,8 +168,10 @@ def refresh_access_token(
     request: RefreshRequest,
     db: Session = Depends(get_session),
 ):
+    request_token_hash = hash_token(request.refresh_token)
+
     token_record = db.exec(
-        select(RefreshToken).where(RefreshToken.token == request.refresh_token)
+        select(RefreshToken).where(RefreshToken.token_hash == request_token_hash)
     ).first()
 
     if not token_record:
@@ -172,6 +193,12 @@ def refresh_access_token(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
+    if user.status != "active":
+        raise HTTPException(status_code=403, detail="User is inactive")
+
+    if not user.role:
+        raise HTTPException(status_code=403, detail="User has no role assigned")
+
     new_access_token = create_access_token(user)
 
     return {
@@ -185,8 +212,10 @@ def logout(
     request: LogoutRequest,
     db: Session = Depends(get_session),
 ):
+    request_token_hash = hash_token(request.refresh_token)
+
     token_record = db.exec(
-        select(RefreshToken).where(RefreshToken.token == request.refresh_token)
+        select(RefreshToken).where(RefreshToken.token_hash == request_token_hash)
     ).first()
 
     if not token_record:
@@ -206,7 +235,7 @@ def logout(
 def create_store(
     request: StoreCreate,
     db: Session = Depends(get_session),
-    current_user: User = Depends(require_roles(["admin", "marketer"])),
+    current_user: User = Depends(require_permissions(["store:create"])),
 ):
     existing_store = db.exec(
         select(Store).where(Store.store_id == request.store_id)
@@ -215,13 +244,33 @@ def create_store(
     if existing_store:
         raise HTTPException(status_code=400, detail="Store already exists")
 
-    store = Store(**request.model_dump())
+    services = get_or_create_services(db, request.services)
+
+    store_data = request.model_dump(exclude={"services"})
+
+    store = Store(**store_data)
+    store.services = services
 
     db.add(store)
     db.commit()
     db.refresh(store)
 
-    return store
+    return {
+        "store_id": store.store_id,
+        "name": store.name,
+        "store_type": store.store_type,
+        "status": store.status,
+        "latitude": store.latitude,
+        "longitude": store.longitude,
+        "address_street": store.address_street,
+        "address_city": store.address_city,
+        "address_state": store.address_state,
+        "address_postal_code": store.address_postal_code,
+        "address_country": store.address_country,
+        "phone": store.phone,
+        "services": [service.name for service in store.services],
+        "operating_hours": store.operating_hours,
+    }
 
 
 @app.get("/api/admin/stores")
@@ -229,7 +278,7 @@ def list_stores(
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_session),
-    current_user: User = Depends(require_roles(["admin", "marketer", "viewer"])),
+    current_user: User = Depends(require_permissions(["store:read"])),
 ):
     if page < 1:
         raise HTTPException(status_code=400, detail="page must be >= 1")
@@ -245,7 +294,25 @@ def list_stores(
     return {
         "page": page,
         "page_size": page_size,
-        "stores": stores,
+        "stores": [
+            {
+                "store_id": store.store_id,
+                "name": store.name,
+                "store_type": store.store_type,
+                "status": store.status,
+                "latitude": store.latitude,
+                "longitude": store.longitude,
+                "address_street": store.address_street,
+                "address_city": store.address_city,
+                "address_state": store.address_state,
+                "address_postal_code": store.address_postal_code,
+                "address_country": store.address_country,
+                "phone": store.phone,
+                "services": [service.name for service in store.services],
+                "operating_hours": store.operating_hours,
+            }
+            for store in stores
+        ],
     }
 
 
@@ -253,7 +320,7 @@ def list_stores(
 def get_store(
     store_id: str,
     db: Session = Depends(get_session),
-    current_user: User = Depends(require_roles(["admin", "marketer", "viewer"])),
+    current_user: User = Depends(require_permissions(["store:read"])),
 ):
     store = db.exec(
         select(Store).where(Store.store_id == store_id)
@@ -262,7 +329,22 @@ def get_store(
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
 
-    return store
+    return {
+        "store_id": store.store_id,
+        "name": store.name,
+        "store_type": store.store_type,
+        "status": store.status,
+        "latitude": store.latitude,
+        "longitude": store.longitude,
+        "address_street": store.address_street,
+        "address_city": store.address_city,
+        "address_state": store.address_state,
+        "address_postal_code": store.address_postal_code,
+        "address_country": store.address_country,
+        "phone": store.phone,
+        "services": [service.name for service in store.services],
+        "operating_hours": store.operating_hours,
+    }
 
 
 @app.patch("/api/admin/stores/{store_id}")
@@ -270,7 +352,7 @@ def update_store(
     store_id: str,
     request: StoreUpdate,
     db: Session = Depends(get_session),
-    current_user: User = Depends(require_roles(["admin", "marketer"])),
+    current_user: User = Depends(require_permissions(["store:update"])),
 ):
     store = db.exec(
         select(Store).where(Store.store_id == store_id)
@@ -281,6 +363,19 @@ def update_store(
 
     update_data = request.model_dump(exclude_unset=True)
 
+    allowed_fields = {"name", "phone", "services", "status", "operating_hours"}
+
+    for field in update_data:
+        if field not in allowed_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Field '{field}' is not allowed to be updated"
+            )
+
+    if "services" in update_data:
+        store.services = get_or_create_services(db, update_data["services"])
+        update_data.pop("services")
+
     for field, value in update_data.items():
         setattr(store, field, value)
 
@@ -288,14 +383,29 @@ def update_store(
     db.commit()
     db.refresh(store)
 
-    return store
+    return {
+        "store_id": store.store_id,
+        "name": store.name,
+        "store_type": store.store_type,
+        "status": store.status,
+        "latitude": store.latitude,
+        "longitude": store.longitude,
+        "address_street": store.address_street,
+        "address_city": store.address_city,
+        "address_state": store.address_state,
+        "address_postal_code": store.address_postal_code,
+        "address_country": store.address_country,
+        "phone": store.phone,
+        "services": [service.name for service in store.services],
+        "operating_hours": store.operating_hours,
+    }
 
 
 @app.delete("/api/admin/stores/{store_id}")
 def deactivate_store(
     store_id: str,
     db: Session = Depends(get_session),
-    current_user: User = Depends(require_roles(["admin", "marketer"])),
+    current_user: User = Depends(require_permissions(["store:delete"])),
 ):
     store = db.exec(
         select(Store).where(Store.store_id == store_id)
@@ -321,7 +431,7 @@ def deactivate_store(
 def import_stores(
     file: UploadFile = File(...),
     db: Session = Depends(get_session),
-    current_user=Depends(require_roles(["admin", "marketer"])),
+    current_user=Depends(require_permissions(["store:import"])),
 ):
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV file")
@@ -447,7 +557,7 @@ def import_stores(
 def create_user(
     request: UserCreate,
     db: Session = Depends(get_session),
-    current_user=Depends(require_roles(["admin"])),
+    current_user=Depends(require_permissions(["user:create"])),
 ):
     existing_user = db.exec(
         select(User).where(User.email == request.email)
@@ -456,15 +566,22 @@ def create_user(
     if existing_user:
         raise HTTPException(status_code=400, detail="User email already exists")
 
-    valid_roles = {"admin", "marketer", "viewer"}
-    if request.role not in valid_roles:
+    valid_statuses = {"active", "inactive"}
+    if request.status not in valid_statuses:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    role = db.exec(
+        select(Role).where(Role.name == request.role)
+    ).first()
+
+    if not role:
         raise HTTPException(status_code=400, detail="Invalid role")
 
     user = User(
         user_id=request.user_id,
         email=request.email,
         hashed_password=hash_password(request.password),
-        role=request.role,
+        role_id=role.id,
         status=request.status,
     )
 
@@ -475,7 +592,7 @@ def create_user(
     return {
         "user_id": user.user_id,
         "email": user.email,
-        "role": user.role,
+        "role": role.name,
         "status": user.status,
     }
 
@@ -483,7 +600,7 @@ def create_user(
 @app.get("/api/admin/users")
 def list_users(
     db: Session = Depends(get_session),
-    current_user=Depends(require_roles(["admin"])),
+    current_user=Depends(require_permissions(["user:read"])),
 ):
     users = db.exec(select(User)).all()
 
@@ -491,7 +608,7 @@ def list_users(
         {
             "user_id": user.user_id,
             "email": user.email,
-            "role": user.role,
+            "role": user.role.name if user.role else None,
             "status": user.status,
         }
         for user in users
@@ -503,7 +620,7 @@ def update_user(
     user_id: str,
     request: UserUpdate,
     db: Session = Depends(get_session),
-    current_user=Depends(require_roles(["admin"])),
+    current_user=Depends(require_permissions(["user:update"])),
 ):
     user = db.exec(
         select(User).where(User.user_id == user_id)
@@ -515,10 +632,14 @@ def update_user(
     update_data = request.model_dump(exclude_unset=True)
 
     if "role" in update_data:
-        valid_roles = {"admin", "marketer", "viewer"}
-        if update_data["role"] not in valid_roles:
+        role = db.exec(
+            select(Role).where(Role.name == update_data["role"])
+        ).first()
+
+        if not role:
             raise HTTPException(status_code=400, detail="Invalid role")
-        user.role = update_data["role"]
+
+        user.role_id = role.id
 
     if "status" in update_data:
         valid_statuses = {"active", "inactive"}
@@ -533,7 +654,7 @@ def update_user(
     return {
         "user_id": user.user_id,
         "email": user.email,
-        "role": user.role,
+        "role": user.role.name if user.role else None,
         "status": user.status,
     }
 
@@ -542,7 +663,7 @@ def update_user(
 def deactivate_user(
     user_id: str,
     db: Session = Depends(get_session),
-    current_user=Depends(require_roles(["admin"])),
+    current_user=Depends(require_permissions(["user:delete"])),
 ):
     user = db.exec(
         select(User).where(User.user_id == user_id)

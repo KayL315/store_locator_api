@@ -3,21 +3,18 @@ from cache import cache
 
 GEOCODING_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days
 
+
 def geocode_address(address: str):
-    """
-    Use Nominatim (OpenStreetMap) to convert address to lat/lon
-    """
-    cache_key = f"geocode:{address.strip().lower()}"
+
+    normalized = " ".join(address.strip().lower().split())
+    cache_key = f"geocode:{normalized}"
 
     cached_result = cache.get(cache_key)
-
-    if cached_result:
-
-        print(f"Cache hit for: {address}")
-
+    if cached_result is not None:
+        print(f" Geocode cache HIT: {address}")
         return cached_result
 
-    print(f"Cache miss. Calling geocoding API for: {address}")
+    print(f" Geocode cache MISS: {address}")
 
     url = "https://nominatim.openstreetmap.org/search"
 
@@ -31,7 +28,15 @@ def geocode_address(address: str):
         "User-Agent": "store-locator-app"
     }
 
-    response = requests.get(url, params=params, headers=headers)
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=5
+        )
+    except requests.RequestException:
+        return None
 
     if response.status_code != 200:
         return None
@@ -39,6 +44,8 @@ def geocode_address(address: str):
     data = response.json()
 
     if not data:
+        # cache negative result to avoid repeated calls
+        cache.set(cache_key, None, 60 * 60)
         return None
 
     result = {
