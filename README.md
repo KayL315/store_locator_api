@@ -77,6 +77,39 @@ DELETE /api/admin/stores/{id}
 ### CSV Import
 POST /api/admin/stores/import
 
+## CSV Processing Choice
+
+This project uses Python's built-in `csv` module for the API CSV import endpoint.
+
+## Test Credentials
+
+Admin:
+- Email: admin@test.com
+- Default Password: TestPassword123!
+- First login requires password change.
+
+Marketer:
+- Email: marketer@test.com
+- Default Password: TestPassword123!
+
+Viewer:
+- Email: viewer@test.com
+- Default Password: TestPassword123!
+
+## Authentication Flow
+
+1. Call `/api/auth/change-password` if using a seed user's default password.
+2. Call `/api/auth/login` to receive access and refresh tokens.
+3. Click Authorize in Swagger and use: `Bearer <access_token>`.
+4. Use `/api/auth/refresh` to get a new access token.
+5. Use `/api/auth/logout` to revoke the refresh token.
+
+## Run Database Migrations
+
+```bash
+alembic upgrade head
+python create_indexes.py
+python seed_users.py
 ---
 
 ## 🧪 Testing
