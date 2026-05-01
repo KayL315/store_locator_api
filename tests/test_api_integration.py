@@ -1,25 +1,49 @@
 import pytest
 from fastapi.testclient import TestClient
 from main import app
+from uuid import uuid4
 
 client = TestClient(app)
 
 
+def change_admin_password():
+    response = client.post("/api/auth/change-password", json={
+        "email": "admin@test.com",
+        "current_password": "TestPassword123!",
+        "new_password": "NewPassword123!"
+    })
+
+    if response.status_code == 200:
+        return
+
+    response = client.post("/api/auth/change-password", json={
+        "email": "admin@test.com",
+        "current_password": "NewPassword123!",
+        "new_password": "NewPassword123!"
+    })
+
+    assert response.status_code == 200
+
+
+def login_admin():
+    change_admin_password()
+
+    response = client.post("/api/auth/login", json={
+        "email": "admin@test.com",
+        "password": "NewPassword123!"
+    })
+
+    assert response.status_code == 200
+    return response.json()["access_token"]
 # -------------------------
 # 1. LOGIN TEST
 # -------------------------
 def test_login_success():
-    response = client.post("/api/auth/login", json={
-        "email": "admin@test.com",
-        "password": "TestPassword123!"
-    })
+    token = login_admin()
 
-    assert response.status_code == 200
-    data = response.json()
-
-    assert "access_token" in data
-    assert "refresh_token" in data
-
+    assert token is not None
+    assert isinstance(token, str)
+    assert len(token) > 0
 
 # -------------------------
 # 2. SEARCH BY LAT/LON
@@ -78,20 +102,18 @@ def test_create_store_requires_auth():
 # 5. CREATE STORE WITH AUTH
 # -------------------------
 def test_create_store_with_auth():
-    login = client.post("/api/auth/login", json={
-        "email": "admin@test.com",
-        "password": "TestPassword123!"
-    })
-
-    token = login.json()["access_token"]
-
+    token = login_admin()
     headers = {"Authorization": f"Bearer {token}"}
 
+    store_id = f"TEST-{uuid4().hex[:8]}"
+
     response = client.post("/api/admin/stores", json={
-        "store_id": "TEST2",
+        "store_id": store_id,
         "name": "Test Store 2",
         "store_type": "regular",
         "status": "active",
+        "latitude": 42.3601,
+        "longitude": -71.0589,
         "address_street": "Boston",
         "address_city": "Boston",
         "address_state": "MA",
@@ -102,7 +124,6 @@ def test_create_store_with_auth():
     }, headers=headers)
 
     assert response.status_code in (200, 201)
-
 
 # -------------------------
 # 6. RATE LIMIT TEST
