@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from sqlmodel import Session, select
 from database import get_session, engine
-from schemas import StoreSearchRequest, StoreSearchResponse, LoginRequest, TokenResponse, RefreshRequest, LogoutRequest, StoreCreate, StoreUpdate, UserCreate, UserUpdate
+from schemas import StoreSearchRequest, StoreSearchResponse, LoginRequest, TokenResponse, RefreshRequest, LogoutRequest, StoreCreate, StoreUpdate, UserCreate, UserUpdate, ChangePasswordRequest
 from search_logic import search_nearby_stores
 from geocoding import geocode_address
 from rate_limit import rate_limit_dependency
@@ -18,7 +18,7 @@ from auth import (
     require_permissions,
     hash_password,
     hash_token,
-    get_user_role_name,
+    get_current_user,
 )
 from csv_validation import validate_csv_headers, validate_store_row
 from contextlib import asynccontextmanager
@@ -168,7 +168,12 @@ def login(
 
     if not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-
+    
+    if user.must_change_password:
+        raise HTTPException(
+            status_code=403,
+            detail="Password must be changed before login"
+        )
     access_token = create_access_token(user)
     refresh_token = create_refresh_token(user)
 
@@ -768,6 +773,37 @@ def deactivate_user(
         "message": "User deactivated successfully",
         "user_id": user.user_id,
         "status": user.status,
+    }
+
+
+
+@app.post("/api/auth/change-password")
+def change_password(
+    request: ChangePasswordRequest,
+    db: Session = Depends(get_session),
+):
+    user = db.exec(
+        select(User).where(User.email == request.email)
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.status != "active":
+        raise HTTPException(status_code=403, detail="User is inactive")
+
+    if not verify_password(request.current_password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid current password")
+
+    user.hashed_password = hash_password(request.new_password)
+    user.must_change_password = False
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": "Password changed successfully. Please login again."
     }
 
 if __name__ == "__main__":

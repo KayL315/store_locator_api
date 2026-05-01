@@ -154,3 +154,8 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     role: Optional[str] = None
     status: Optional[str] = None
+
+class ChangePasswordRequest(BaseModel):
+    email: EmailStr
+    current_password: str
+    new_password: str

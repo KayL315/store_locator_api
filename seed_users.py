@@ -132,6 +132,7 @@ def create_user_if_not_exists(
         hashed_password=hash_password(DEFAULT_PASSWORD),
         role_id=role.id,
         status="active",
+        must_change_password=True,
     )
 
     db.add(user)

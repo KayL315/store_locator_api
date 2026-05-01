@@ -189,8 +189,9 @@ class User(SQLModel, table=True):
     role: Optional[Role] = Relationship(back_populates="users")
 
     status: str = Field(default="active")
+    must_change_password: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
-
+    
 
 class RefreshToken(SQLModel, table=True):
     __tablename__ = "refresh_tokens"
