@@ -2,6 +2,10 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException, Request
 
 
+MAX_REQUESTS_PER_MINUTE = 10
+MAX_REQUESTS_PER_HOUR = 100
+
+
 class InMemoryRateLimiter:
     def __init__(self):
         self.requests = {}
@@ -12,7 +16,6 @@ class InMemoryRateLimiter:
         if ip not in self.requests:
             self.requests[ip] = []
 
-        # 只保留最近 1 小时内的请求
         one_hour_ago = now - timedelta(hours=1)
         self.requests[ip] = [
             request_time
@@ -30,16 +33,26 @@ class InMemoryRateLimiter:
 
         requests_last_hour = self.requests[ip]
 
-        if len(requests_last_minute) >= 10:
+        if len(requests_last_minute) >= MAX_REQUESTS_PER_MINUTE:
             raise HTTPException(
                 status_code=429,
-                detail="Rate limit exceeded: maximum 10 requests per minute."
+                detail="Rate limit exceeded: maximum 10 requests per minute.",
+                headers={
+                    "Retry-After": "60",
+                    "X-RateLimit-Limit": str(MAX_REQUESTS_PER_MINUTE),
+                    "X-RateLimit-Remaining": "0",
+                },
             )
 
-        if len(requests_last_hour) >= 100:
+        if len(requests_last_hour) >= MAX_REQUESTS_PER_HOUR:
             raise HTTPException(
                 status_code=429,
-                detail="Rate limit exceeded: maximum 100 requests per hour."
+                detail="Rate limit exceeded: maximum 100 requests per hour.",
+                headers={
+                    "Retry-After": "3600",
+                    "X-RateLimit-Limit": str(MAX_REQUESTS_PER_HOUR),
+                    "X-RateLimit-Remaining": "0",
+                },
             )
 
         self.requests[ip].append(now)

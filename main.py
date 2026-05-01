@@ -1,7 +1,7 @@
 import csv
 from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
-from sqlmodel import Session, select, SQLModel
+from sqlmodel import Session, select
 from database import get_session, engine
 from schemas import StoreSearchRequest, StoreSearchResponse, LoginRequest, TokenResponse, RefreshRequest, LogoutRequest, StoreCreate, StoreUpdate, UserCreate, UserUpdate
 from search_logic import search_nearby_stores
@@ -23,12 +23,11 @@ from auth import (
 from csv_validation import validate_csv_headers, validate_store_row
 from contextlib import asynccontextmanager
 from seed_users import seed_users
+from fastapi.middleware.cors import CORSMiddleware
+from datetime import timezone
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Creating tables...")
-    SQLModel.metadata.create_all(engine)
-
     print("🌱 Seeding users...")
     seed_users()
 
@@ -40,7 +39,18 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
-
+#之后还可以把前端部署url放进来，这样就允许前端网页来调用后端api了
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://store-locator-api-wv3e.onrender.com",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def get_or_create_services(db: Session, service_names: list[str]) -> list[Service]:
     services = []
@@ -59,6 +69,21 @@ def get_or_create_services(db: Session, service_names: list[str]) -> list[Servic
         services.append(service)
 
     return services
+
+def build_full_address(
+    address_street: str,
+    address_city: str,
+    address_state: str,
+    address_postal_code: str,
+    address_country: str,
+) -> str:
+    return (
+        f"{address_street}, "
+        f"{address_city}, "
+        f"{address_state} "
+        f"{address_postal_code}, "
+        f"{address_country}"
+    )
 
 @app.get("/api/health")
 def health_check():
@@ -150,7 +175,7 @@ def login(
     refresh_token_record = RefreshToken(
         user_id=user.user_id,
         token_hash=hash_token(refresh_token),
-        expires_at=datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
     )
 
     db.add(refresh_token_record)
@@ -180,7 +205,7 @@ def refresh_access_token(
     if token_record.revoked:
         raise HTTPException(status_code=401, detail="Refresh token has been revoked")
 
-    if token_record.expires_at < datetime.utcnow():
+    if token_record.expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=401, detail="Refresh token has expired")
 
     payload = decode_token(request.refresh_token)
@@ -244,11 +269,39 @@ def create_store(
     if existing_store:
         raise HTTPException(status_code=400, detail="Store already exists")
 
+    lat = request.latitude
+    lon = request.longitude
+
+    if lat is None or lon is None:
+        full_address = build_full_address(
+            request.address_street,
+            request.address_city,
+            request.address_state,
+            request.address_postal_code,
+            request.address_country,
+        )
+
+        geo = geocode_address(full_address)
+
+        if not geo:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not geocode store address. Please provide valid latitude and longitude.",
+            )
+
+        lat = geo["lat"]
+        lon = geo["lon"]
+
     services = get_or_create_services(db, request.services)
 
-    store_data = request.model_dump(exclude={"services"})
+    store_data = request.model_dump(exclude={"services", "latitude", "longitude"})
 
-    store = Store(**store_data)
+    store = Store(
+        **store_data,
+        latitude=lat,
+        longitude=lon,
+    )
+
     store.services = services
 
     db.add(store)
@@ -271,7 +324,6 @@ def create_store(
         "services": [service.name for service in store.services],
         "operating_hours": store.operating_hours,
     }
-
 
 @app.get("/api/admin/stores")
 def list_stores(
@@ -455,7 +507,7 @@ def import_stores(
                 store_id = row["store_id"]
 
                 services = row["services"].split("|") if row["services"] else []
-
+                service_objects = get_or_create_services(db, service_names)
                 operating_hours = {
                     "mon": row["hours_mon"],
                     "tue": row["hours_tue"],
@@ -465,7 +517,41 @@ def import_stores(
                     "sat": row["hours_sat"],
                     "sun": row["hours_sun"],
                 }
+                lat_value = row["latitude"]
 
+                lon_value = row["longitude"]
+
+                if lat_value and lon_value:
+
+                    latitude = float(lat_value)
+
+                    longitude = float(lon_value)
+
+                else:
+
+                    full_address = build_full_address(
+
+                        row["address_street"],
+
+                        row["address_city"],
+
+                        row["address_state"],
+
+                        row["address_postal_code"],
+
+                        row["address_country"],
+
+                    )
+
+                    geo = geocode_address(full_address)
+
+                    if not geo:
+
+                        raise ValueError(f"Could not geocode address for store_id={store_id}")
+
+                    latitude = geo["lat"]
+
+                    longitude = geo["lon"]
                 existing_store = db.exec(
                     select(Store).where(Store.store_id == store_id)
                 ).first()
@@ -475,15 +561,15 @@ def import_stores(
                     existing_store.name = row["name"]
                     existing_store.store_type = row["store_type"]
                     existing_store.status = row["status"]
-                    existing_store.latitude = float(row["latitude"])
-                    existing_store.longitude = float(row["longitude"])
+                    existing_store.latitude = latitude
+                    existing_store.longitude = longitude
                     existing_store.address_street = row["address_street"]
                     existing_store.address_city = row["address_city"]
                     existing_store.address_state = row["address_state"]
                     existing_store.address_postal_code = row["address_postal_code"]
                     existing_store.address_country = row["address_country"]
                     existing_store.phone = row["phone"]
-                    existing_store.services = services
+                    existing_store.services = service_objects
                     existing_store.operating_hours = operating_hours
 
                     db.add(existing_store)
@@ -496,17 +582,17 @@ def import_stores(
                         name=row["name"],
                         store_type=row["store_type"],
                         status=row["status"],
-                        latitude=float(row["latitude"]),
-                        longitude=float(row["longitude"]),
+                        latitude=latitude,
+                        longitude=longitude,
                         address_street=row["address_street"],
                         address_city=row["address_city"],
                         address_state=row["address_state"],
                         address_postal_code=row["address_postal_code"],
                         address_country=row["address_country"],
                         phone=row["phone"],
-                        services=services,
                         operating_hours=operating_hours,
                     )
+                    new_store.services = service_objects
 
                     db.add(new_store)
                     created += 1

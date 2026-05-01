@@ -48,14 +48,15 @@ def validate_store_row(row):
     if row["status"] not in VALID_STATUSES:
         raise ValueError("Invalid status")
 
-    lat = float(row["latitude"])
-    lon = float(row["longitude"])
-
-    if not -90 <= lat <= 90:
-        raise ValueError("Latitude must be between -90 and 90")
-
-    if not -180 <= lon <= 180:
-        raise ValueError("Longitude must be between -180 and 180")
+    if row["latitude"] and row["longitude"]:
+        lat = float(row["latitude"])
+        lon = float(row["longitude"])
+        if not -90 <= lat <= 90:
+            raise ValueError("latitude must be between -90 and 90")
+        if not -180 <= lon <= 180:
+            raise ValueError("longitude must be between -180 and 180")
+    elif row["latitude"] or row["longitude"]:
+        raise ValueError("latitude and longitude must be provided together")
 
     if not re.match(r"^[A-Z]{2}$", row["address_state"]):
         raise ValueError("address_state must be 2 uppercase letters")

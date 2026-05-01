@@ -1,124 +1,106 @@
-# Store Locator API
+# 🏪 Store Locator API
 
-## 📌 Project Overview
-This project is a production-ready Store Locator API built with FastAPI.  
-It supports public store search functionality and secure internal store management with role-based access control (RBAC).
+## 📌 Overview
+
+A production-ready Store Locator API built with FastAPI.
+
+This system supports:
+- High-performance geospatial store search
+- Secure internal store management
+- Role-Based Access Control (RBAC)
+- CSV batch import with validation and upsert
+- Scalable architecture with caching and indexing
+
+---
+
+## 🌐 Live Demo
+
+https://store-locator-api-wv3e.onrender.com/docs
 
 ---
 
 ## 🚀 Tech Stack
 
 - Backend: FastAPI
-- Database: PostgreSQL (via SQLModel)
-- Authentication: JWT (Access + Refresh Token)
-- Caching: In-memory cache
+- Database: PostgreSQL (SQLModel / SQLAlchemy)
+- Authentication: JWT (Access + Refresh Tokens)
+- Caching: In-memory cache (TTL-based)
 - Geocoding: Nominatim API
-- Testing: pytest
-- Deployment: (fill later: Render / Railway)
+- Testing: pytest (Unit + Integration)
+- Deployment: Render + Docker
 
 ---
-## 🌐 Live Demo
 
-https://store-locator-api-wv3e.onrender.com/docs
+## 🏗 Architecture Overview
 
-## Deployment
+Client → FastAPI → Service Layer → PostgreSQL → Cache
 
-Live Demo:
-https://store-locator-api-wv3e.onrender.com/docs
+---
 
-The application is deployed on Render with PostgreSQL.
+## 🔍 Key Design Decisions
 
-## Docker
+### Geospatial Search
+Bounding Box → Haversine → Sort
 
-```bash
-docker build -t store-locator .
-docker run -p 10000:10000 \
-  -e DATABASE_URL="postgresql://postgres:password@host.docker.internal:5432/store_locator" \
-  -e JWT_SECRET="your-secret" \
-  store-locator
-  
+### Caching
+- Geocoding: 30 days
+- Search: 5 minutes
+
+### RBAC
+User → Role → Permissions
+
+### Rate Limiting
+- 10/min
+- 100/hour
+
+---
+
 ## ⚙️ Features
 
-### 1. Public Store Search API
+### Store Search
+POST /api/stores/search
 
-- Search by:
-  - Latitude & Longitude
-  - Address (via geocoding)
-  - Postal Code
+Supports:
+- Lat/Lon
+- Address
+- Postal Code
 
-- Filters:
-  - radius_miles
-  - services (AND logic)
-  - store_types (OR logic)
-  - open_now
+### Auth
+POST /api/auth/login
 
-- Distance Calculation:
-  - Bounding Box + Haversine (geopy)
+### Store Management
+POST /api/admin/stores  
+GET /api/admin/stores  
+PATCH /api/admin/stores/{id}  
+DELETE /api/admin/stores/{id}
 
-- Rate Limiting:
-  - 10 requests / minute
-  - 100 requests / hour
-
-- Caching:
-  - Geocoding results cached (30 days)
+### CSV Import
+POST /api/admin/stores/import
 
 ---
 
-### 2. Authentication & Authorization
+## 🧪 Testing
 
-- JWT-based authentication:
-  - Access Token (15 min)
-  - Refresh Token (7 days)
-
-- Role-Based Access Control:
-  - Admin
-  - Marketer
-  - Viewer
+pytest
 
 ---
 
-### 3. Store Management (Admin / Marketer)
+## 🐳 Docker
 
-- Create store
-- List stores (pagination)
-- Get store details
-- Update store (PATCH)
-- Soft delete store
+docker build -t store-locator .
+docker run -p 10000:10000 store-locator
 
 ---
 
-### 4. CSV Import (Upsert)
+## 📦 Setup
 
-- Upload CSV file
-- Create or update stores
-- Validate:
-  - headers
-  - data format
-  - coordinates
-  - phone format
-  - operating hours
-- Transaction:
-  - All-or-nothing rollback
-- Response includes:
-  - created count
-  - updated count
-  - failed rows
-
----
-
-### 5. User Management (Admin Only)
-
-- Create user
-- List users
-- Update user role/status
-- Deactivate user
-
----
-
-## 📦 Setup Instructions
-
-### 1. Clone project
-
-```bash
 git clone https://github.com/KayL315/store_locator_api.git
 cd store_locator_project
+pip install -r requirements.txt
+uvicorn main:app --reload
+
+---
+
+## 🎯 Summary
+
+Production-level backend system with search, auth, RBAC, caching, and testing.
