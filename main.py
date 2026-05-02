@@ -180,7 +180,7 @@ def login(
     refresh_token_record = RefreshToken(
         user_id=user.user_id,
         token_hash=hash_token(refresh_token),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        expires_at=datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
     )
 
     db.add(refresh_token_record)
@@ -210,7 +210,7 @@ def refresh_access_token(
     if token_record.revoked:
         raise HTTPException(status_code=401, detail="Refresh token has been revoked")
 
-    if token_record.expires_at < datetime.now(timezone.utc):
+    if token_record.expires_at < datetime.utcnow():
         raise HTTPException(status_code=401, detail="Refresh token has expired")
 
     payload = decode_token(request.refresh_token)
@@ -433,6 +433,13 @@ def update_store(
         store.services = get_or_create_services(db, update_data["services"])
         update_data.pop("services")
 
+    update_data = request.model_dump(exclude_unset=True)
+
+    if not update_data:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one field must be provided for update"
+        )
     for field, value in update_data.items():
         setattr(store, field, value)
 
@@ -511,7 +518,7 @@ def import_stores(
 
                 store_id = row["store_id"]
 
-                services = row["services"].split("|") if row["services"] else []
+                service_names = row["services"].split("|") if row["services"] else []
                 service_objects = get_or_create_services(db, service_names)
                 operating_hours = {
                     "mon": row["hours_mon"],

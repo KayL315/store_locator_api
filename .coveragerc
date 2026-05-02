@@ -3,4 +3,3 @@ omit =
     tests/*
     seed_users.py
     import_data.py
-    main.py

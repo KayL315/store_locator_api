@@ -1,7 +1,7 @@
 import os
 import hashlib
 from datetime import datetime, timedelta, timezone
-
+from uuid import uuid4
 import jwt
 import bcrypt
 from dotenv import load_dotenv
@@ -58,21 +58,22 @@ def get_user_role_name(user: User) -> str:
 
 
 def create_access_token(user: User) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     role_name = get_user_role_name(user)
 
     payload = {
         "user_id": user.user_id,
         "email": user.email,
         "role": role_name,
+        "type": "access",
         "exp": expire,
+        "jti": str(uuid4()),
     }
 
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-
 def create_refresh_token(user: User) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     role_name = get_user_role_name(user)
 
     payload = {
@@ -81,10 +82,10 @@ def create_refresh_token(user: User) -> str:
         "role": role_name,
         "type": "refresh",
         "exp": expire,
+        "jti": str(uuid4()),
     }
 
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
 
 def decode_token(token: str) -> dict:
     try:

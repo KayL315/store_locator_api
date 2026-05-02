@@ -1,5 +1,5 @@
 from sqlmodel import Session, select
-
+from models import User, RefreshToken
 from database import engine
 from models import User, Role, Permission
 from auth import hash_password
@@ -50,7 +50,29 @@ SEED_USERS = [
         "role": "viewer",
     },
 ]
+def reset_admin_for_tests():
+    seed_users()
 
+    with Session(engine) as db:
+        admin = db.exec(
+            select(User).where(User.email == "admin@test.com")
+        ).first()
+
+        assert admin is not None
+
+        admin.hashed_password = hash_password("TestPassword123!")
+        admin.must_change_password = False
+        admin.status = "active"
+
+        old_tokens = db.exec(
+            select(RefreshToken).where(RefreshToken.user_id == admin.user_id)
+        ).all()
+
+        for token in old_tokens:
+            db.delete(token)
+
+        db.add(admin)
+        db.commit()
 
 def get_or_create_permission(db: Session, permission_name: str) -> Permission:
     permission = db.exec(

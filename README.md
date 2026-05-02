@@ -1,15 +1,8 @@
 # 🏪 Store Locator API
 
-## 📌 Overview
+## 📌 Project Description
 
-A production-ready Store Locator API built with FastAPI.
-
-This system supports:
-- High-performance geospatial store search
-- Secure internal store management
-- Role-Based Access Control (RBAC)
-- CSV batch import with validation and upsert
-- Scalable architecture with caching and indexing
+A production-ready Store Locator API built with FastAPI, supporting geospatial search, authentication, RBAC, CSV import, and scalable backend design.
 
 ---
 
@@ -19,21 +12,28 @@ https://store-locator-api-wv3e.onrender.com/docs
 
 ---
 
+
+## 📂 GitHub Repository
+
+https://github.com/KayL315/store_locator_api
+---
+
+
 ## 🚀 Tech Stack
 
 - Backend: FastAPI
-- Database: PostgreSQL (SQLModel / SQLAlchemy)
-- Authentication: JWT (Access + Refresh Tokens)
-- Caching: In-memory cache (TTL-based)
+- Database: PostgreSQL (SQLModel)
+- Auth: JWT (Access + Refresh Tokens)
+- Cache: In-memory TTL
 - Geocoding: Nominatim API
-- Testing: pytest (Unit + Integration)
+- Testing: pytest
 - Deployment: Render + Docker
 
 ---
 
 ## 🏗 Architecture Overview
 
-Client → FastAPI → Service Layer → PostgreSQL → Cache
+Client → FastAPI → Business Logic → PostgreSQL → Cache
 
 ---
 
@@ -60,13 +60,10 @@ User → Role → Permissions
 ### Store Search
 POST /api/stores/search
 
-Supports:
-- Lat/Lon
-- Address
-- Postal Code
-
-### Auth
-POST /api/auth/login
+### Authentication
+POST /api/auth/login  
+POST /api/auth/refresh  
+POST /api/auth/logout  
 
 ### Store Management
 POST /api/admin/stores  
@@ -77,63 +74,138 @@ DELETE /api/admin/stores/{id}
 ### CSV Import
 POST /api/admin/stores/import
 
-## CSV Processing Choice
+---
 
-This project uses Python's built-in `csv` module for the API CSV import endpoint.
+## 📄 CSV Processing Choice
 
-## Test Credentials
+Uses Python built-in csv module.
 
-Admin:
-- Email: admin@test.com
-- Default Password: TestPassword123!
-- First login requires password change.
+---
 
-Marketer:
-- Email: marketer@test.com
-- Default Password: TestPassword123!
+## 🔐 Authentication Flow
 
-Viewer:
-- Email: viewer@test.com
-- Default Password: TestPassword123!
+1. Change password if first login  
+2. Login → get tokens  
+3. Use Bearer token  
+4. Refresh token when expired  
+5. Logout to revoke  
 
-## Authentication Flow
+---
 
-1. Call `/api/auth/change-password` if using a seed user's default password.
-2. Call `/api/auth/login` to receive access and refresh tokens.
-3. Click Authorize in Swagger and use: `Bearer <access_token>`.
-4. Use `/api/auth/refresh` to get a new access token.
-5. Use `/api/auth/logout` to revoke the refresh token.
+## 📏 Distance Calculation
 
-## Run Database Migrations
+Haversine formula.
 
-```bash
-alembic upgrade head
-python create_indexes.py
-python seed_users.py
 ---
 
 ## 🧪 Testing
 
+Run:
+
 pytest
+
+Coverage:
+
+pytest --cov=. --cov-report=term-missing
+
+Coverage ≥ 60%
+
+---
+
+## 🗄 Database Setup
+
+alembic upgrade head  
+python create_indexes.py  
+python seed_users.py  
+
+---
+
+## ▶️ Run Locally
+
+uvicorn main:app --reload
+
+---
+## 🔄 CI/CD
+
+This project uses GitHub Actions for Continuous Integration.
+
+### Pipeline includes:
+- Install dependencies
+- Run test suite
+- Generate coverage report
+- Fail build if tests fail
+
+### Trigger:
+- On push to `main`
+- On pull request
+
+This ensures code quality and prevents breaking changes.
 
 ---
 
 ## 🐳 Docker
 
+The application is containerized using Docker.
+
+### Build:
 docker build -t store-locator .
+
+### Run:
 docker run -p 10000:10000 store-locator
+
+### Benefits:
+- Environment consistency
+- Easy deployment
+- Scalable infrastructure
+---
+
+## 🔑 Test Credentials
+
+Admin: admin@test.com / TestPassword123!  
+Marketer: marketer@test.com / TestPassword123!  
+Viewer: viewer@test.com / TestPassword123!  
 
 ---
 
-## 📦 Setup
+## 📡 API Docs
 
-git clone https://github.com/KayL315/store_locator_api.git
-cd store_locator_project
-pip install -r requirements.txt
-uvicorn main:app --reload
+https://store-locator-api-wv3e.onrender.com/docs
+
+---
+
+## 🚀 Deployment
+
+Platform: Render  
+URL: https://store-locator-api-wv3e.onrender.com  
+
+---
+## 🧩 Project Management
+
+This project was organized using Jira.
+Jira board:
+https://kaymengyaoliu.atlassian.net/jira/software/projects/SL/boards/2?atlOrigin=eyJpIjoiYmNlYzdkYmJjOTljNDQ3Zjg1NjhhYThkMTM0YmNmNzIiLCJwIjoiaiJ9
+
+### Used for:
+- Task tracking
+- Feature breakdown
+- Sprint planning
+
+### Example tasks:
+- Implement authentication system
+- Add RBAC permissions
+- Build geospatial search
+- Implement CSV import
+- Add caching layer
+
+This helped structure development and track progress.
+---
+
+## 🧾 Health Check
+
+GET /api/health
 
 ---
 
 ## 🎯 Summary
 
-Production-level backend system with search, auth, RBAC, caching, and testing.
+Production-level backend with search, auth, RBAC, caching, testing, and deployment.

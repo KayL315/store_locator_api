@@ -1,6 +1,11 @@
 from typing import List, Optional, Dict
-from pydantic import BaseModel, Field, model_validator, EmailStr
+from pydantic import BaseModel, Field, model_validator, EmailStr, ConfigDict
+from enum import Enum
 
+class StoreStatus(str, Enum):
+    active = "active"
+    inactive = "inactive"
+    temporarily_closed = "temporarily_closed"
 
 class StoreSearchRequest(BaseModel):
     lat: Optional[float] = Field(default=None, ge=-90, le=90)
@@ -35,7 +40,7 @@ class StoreResponse(BaseModel):
     store_id: str
     name: str
     store_type: str
-    status: str
+    status: StoreStatus
     phone: Optional[str] = None
 
     latitude: float
@@ -109,7 +114,7 @@ class StoreCreate(BaseModel):
 
     store_type: str
 
-    status: str = "active"
+    status: StoreStatus = StoreStatus.active
 
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
     
@@ -132,14 +137,14 @@ class StoreCreate(BaseModel):
     operating_hours: Dict[str, str]
 
 class StoreUpdate(BaseModel):
-
+    model_config = ConfigDict(extra="forbid")
     name: Optional[str] = None
 
     phone: Optional[str] = None
 
     services: Optional[List[str]] = None
 
-    status: Optional[str] = None
+    status: Optional[StoreStatus] = None
 
     operating_hours: Optional[Dict[str, str]] = None
 
